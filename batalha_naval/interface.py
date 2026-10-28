@@ -1,7 +1,3 @@
-"""Interface gráfica (Participante 1) — tkinter.
-
-Telas: Menu -> Posicionamento -> Batalha, e Estatísticas (a cargo do Participante 3).
-"""
 import tkinter as tk
 from tkinter import messagebox
 
@@ -28,7 +24,6 @@ def rotulo(master, texto, fonte=FONTE, **kw):
 
 
 class TabuleiroCanvas(tk.Canvas):
-    """Desenha um Tabuleiro. Reutilizado nas telas de posicionamento e batalha."""
 
     def __init__(self, master, tabuleiro, mostrar_navios=True, ao_clicar=None, ao_passar=None):
         lado = MARGEM + m.TAMANHO * TAM_CELULA + 2
@@ -228,4 +223,37 @@ class TelaBatalha(tk.Frame):
         textos = {"agua": "água", "acerto": f"acertou o {nome}!", "afundou": f"afundou o {nome}!"}
         self.log.insert(0, f"{quem} → {coord}: {textos[resultado]}")
 
-#seguir logica aqui 
+    def atirar(self, cel):
+        if not self.vez_jogador:
+            return
+        resultado, nome = self.inimigo.atirar(*cel)
+        if resultado == "repetido":
+            return
+        self.tiros += 1
+        self.acertos += resultado != "agua"
+        self._registrar("Você", *cel, resultado, nome)
+        self.canvas_inimigo.desenhar()
+        if self.inimigo.todos_afundados():
+            return self.fim(True)
+        self.vez_jogador = False
+        self.status.config(text="Vez do adversário...")
+        self.after(700, self.turno_ia)
+
+    def turno_ia(self):
+        l, c = self.ia.escolher()
+        resultado, nome = self.jogador.atirar(l, c)
+        self.ia.registrar(l, c, resultado)
+        self.tiros_ia += 1
+        self._registrar("Inimigo", l, c, resultado, nome)
+        self.canvas_jogador.desenhar()
+        if self.jogador.todos_afundados():
+            return self.fim(False)
+        self.vez_jogador = True
+        self.status.config(text="Sua vez!")
+
+    def fim(self, venceu):
+        self.vez_jogador = False
+        self.app.ao_terminar_partida({"venceu": venceu, "tiros": self.tiros,
+                                      "acertos": self.acertos, "tiros_inimigo": self.tiros_ia})
+        messagebox.showinfo("Fim de jogo", "Você venceu!" if venceu else "Sua frota foi destruída.")
+        self.app.mostrar(TelaMenu)
