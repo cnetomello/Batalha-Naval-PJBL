@@ -86,6 +86,27 @@ class TabuleiroCanvas(tk.Canvas):
                     self.create_line(x0 + 9, y1 - 9, x1 - 9, y0 + 9, fill="white", width=3)
 
 
+def mostrar_regras():
+    messagebox.showinfo(
+        "Regras - Batalha Naval",
+        "OBJETIVO:\n"
+        "Afundar todos os barcos adversários!\n\n"
+        "BARCOS:\n"
+        "- Porta-aviões: 5 casas\n"
+        "- Encouraçado: 4 casas\n"
+        "- Cruzador: 3 casas\n"
+        "- Submarino: 3 casas\n"
+        "- Destroyer: 2 casas\n\n"
+        "REGRAS:\n"
+        "1. O tabuleiro possui 10x10 casas.\n"
+        "2. Posicione os barcos na horizontal ou vertical.\n"
+        "3. Clique nas casas do adversário para atirar.\n"
+        "4. Acertar um barco conta como acerto.\n"
+        "5. Acertar a água conta como erro.\n"
+        "6. Não é possível repetir disparos.\n"
+        "7. Vence quem afundar todos os barcos inimigos."
+    )
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -114,6 +135,7 @@ class TelaMenu(tk.Frame):
         self.app = app
         rotulo(self, "⚓ BATALHA NAVAL", FONTE_TITULO).pack(pady=(10, 30))
         botao(self, "Novo jogo", lambda: app.mostrar(TelaPosicionamento)).pack(pady=6)
+        botao(self, "Regras", mostrar_regras).pack(pady=6)
         #botao(self, "Estatísticas", lambda: app.mostrar(TelaEstatisticas)).pack(pady=6)
         botao(self, "Sair", app.destroy).pack(pady=6)
 
@@ -213,10 +235,31 @@ class TelaBatalha(tk.Frame):
 
         self.status = rotulo(self, "Sua vez!", ("Helvetica", 13, "bold"))
         self.status.grid(row=2, column=0, columnspan=2, pady=(12, 4))
+        
+        self.info_navios = rotulo(
+            self,
+            "",
+        ("Helvetica", 12, "bold")
+        )
+        self.info_navios.grid(
+        row=3, column=0, columnspan=2, pady=5
+        )
+        self.atualizar_navios_restantes()
+
         self.log = tk.Listbox(self, height=5, width=80, font=FONTE, bg="#123a5e",
                               fg=COR["texto"], highlightthickness=0)
-        self.log.grid(row=3, column=0, columnspan=2)
-        botao(self, "Desistir", lambda: app.mostrar(TelaMenu), 12).grid(row=4, column=0, columnspan=2, pady=10)
+        self.log.grid(row=4, column=0, columnspan=2)
+        botao(self, "Desistir", lambda: app.mostrar(TelaMenu), 12).grid(row=5, column=0, columnspan=2, pady=10)
+        
+
+    def atualizar_navios_restantes(self):
+        restantes = self.inimigo.navios_restantes()
+        total = len(self.inimigo.navios)
+
+        self.info_navios.config(
+            text=f"Navios inimigos restantes: {restantes} de {total}"
+        )
+
 
     def _registrar(self, quem, linha, coluna, resultado, nome):
         coord = f"{chr(65 + coluna)}{linha + 1}"
@@ -233,6 +276,7 @@ class TelaBatalha(tk.Frame):
         self.acertos += resultado != "agua"
         self._registrar("Você", *cel, resultado, nome)
         self.canvas_inimigo.desenhar()
+        self.atualizar_navios_restantes()
         if self.inimigo.todos_afundados():
             return self.fim(True)
         self.vez_jogador = False
