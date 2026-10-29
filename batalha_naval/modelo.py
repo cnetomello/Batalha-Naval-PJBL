@@ -74,6 +74,13 @@ class Tabuleiro:
     def todos_afundados(self):
         return all(n["atingidas"] == n["celulas"] for n in self.navios)
 
+    def navios_restantes(self):
+        return sum(
+            1 for n in self.navios
+            if n["atingidas"] != n["celulas"]
+        )
+
+
 
 class IA:
 
