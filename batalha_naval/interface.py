@@ -128,9 +128,6 @@ class App(tk.Tk):
         self.tela.pack(padx=24, pady=24)
 
     def ao_terminar_partida(self, resultado):
-        """Chamado ao fim de cada partida com um dict:
-        {"venceu", "tiros", "acertos", "tiros_inimigo", "duracao_s"}.
-        Completa com jogador e data/hora, salva no histórico e devolve o registro."""
         registro = {
             "data_hora": datetime.now().isoformat(timespec="seconds"),
             "jogador": self.jogador or "Jogador",
@@ -342,11 +339,6 @@ class TelaBatalha(tk.Frame):
 
 
 class TelaEstatisticas(tk.Frame):
-    """Resumo, histórico de partidas e gráficos.
-
-    `ultima` é o registro da partida que acabou de terminar (None quando a
-    tela é aberta pelo menu).
-    """
 
     COLUNAS = (("data", "Data/hora", 135), ("jogador", "Jogador", 95),
                ("resultado", "Resultado", 85), ("tiros", "Tiros", 55),
