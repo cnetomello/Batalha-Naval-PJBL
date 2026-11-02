@@ -2,6 +2,10 @@ import tkinter as tk
 from tkinter import messagebox
 
 from batalha_naval import modelo as m
+from batalha_naval import grafico as g
+
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
 
 TAM_CELULA = 36
 MARGEM = 28
@@ -114,6 +118,7 @@ class App(tk.Tk):
         self.configure(bg=COR["fundo"])
         self.resizable(False, False)
         self.tela = None
+        self.historico = []
         self.mostrar(TelaMenu)
 
     def mostrar(self, classe, **kwargs):
@@ -123,10 +128,8 @@ class App(tk.Tk):
         self.tela.pack(padx=24, pady=24)
 
     def ao_terminar_partida(self, resultado):
-        """Chamado ao fim de cada partida com um dict:
-        {"venceu": bool, "tiros": int, "acertos": int, "tiros_inimigo": int}
-        TODO (Participante 3): salvar com a camada de persistência."""
-        print("Partida finalizada:", resultado)
+        self.historico.append(resultado)
+        print("HISTÓRICO:", self.historico)
 
 
 class TelaMenu(tk.Frame):
@@ -136,8 +139,71 @@ class TelaMenu(tk.Frame):
         rotulo(self, "⚓ BATALHA NAVAL", FONTE_TITULO).pack(pady=(10, 30))
         botao(self, "Novo jogo", lambda: app.mostrar(TelaPosicionamento)).pack(pady=6)
         botao(self, "Regras", mostrar_regras).pack(pady=6)
-        #botao(self, "Estatísticas", lambda: app.mostrar(TelaEstatisticas)).pack(pady=6)
+        botao(self, "Estatísticas", lambda: app.mostrar(TelaEstatisticas)).pack(pady=6)
         botao(self, "Sair", app.destroy).pack(pady=6)
+
+
+class TelaEstatisticas(tk.Frame):
+    def __init__(self, app):
+        super().__init__(app, bg=COR["fundo"])
+        self.app = app
+        self.figura = None
+        self.canvas_grafico = None
+
+        rotulo(
+            self,
+            "ESTATÍSTICAS",
+            ("Helvetica", 20, "bold")
+        ).pack(pady=(5, 15))
+
+        # Botões para escolher o gráfico
+        painel_botoes = tk.Frame(self, bg=COR["fundo"])
+        painel_botoes.pack(pady=10)
+
+        for nome in g.GRAFICOS:
+            botao(
+                painel_botoes,
+                nome,
+                lambda n=nome: self.mostrar_grafico(n),
+                largura=22
+            ).pack(side="left", padx=5)
+
+        # Área onde o gráfico será exibido
+        self.area_grafico = tk.Frame(self, bg=COR["fundo"])
+        self.area_grafico.pack(pady=10)
+
+        botao(
+            self,
+            "Voltar ao menu",
+            lambda: app.mostrar(TelaMenu)
+        ).pack(pady=10)
+
+        # Mostra o primeiro gráfico automaticamente
+        primeiro = next(iter(g.GRAFICOS))
+        self.mostrar_grafico(primeiro)
+
+    def mostrar_grafico(self, nome):
+        # Remove o gráfico anterior
+        if self.canvas_grafico is not None:
+            self.canvas_grafico.get_tk_widget().destroy()
+            self.canvas_grafico = None
+
+        if self.figura is not None:
+            plt.close(self.figura)
+            self.figura = None
+
+        # Gera o gráfico usando o histórico do jogo
+        funcao = g.GRAFICOS[nome]
+        self.figura = funcao(self.app.historico)
+
+        # Insere o gráfico na janela
+        self.canvas_grafico = FigureCanvasTkAgg(
+            self.figura,
+            master=self.area_grafico
+        )
+
+        self.canvas_grafico.draw()
+        self.canvas_grafico.get_tk_widget().pack()
 
 
 class TelaPosicionamento(tk.Frame):
