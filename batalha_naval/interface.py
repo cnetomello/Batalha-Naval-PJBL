@@ -1,6 +1,9 @@
+import time
 import tkinter as tk
-from tkinter import messagebox
-
+from datetime import datetime
+from tkinter import messagebox, ttk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from batalha_naval import estatisticas as est
 from batalha_naval import modelo as m
 
 TAM_CELULA = 36
@@ -9,6 +12,7 @@ COR = {
     "fundo": "#0b2540", "texto": "#e8f1f8", "agua": "#1f6fa8", "grade": "#0b2540",
     "navio": "#8a97a3", "acerto": "#d64545", "erro": "#e8f1f8",
     "ok": "#4caf7a", "invalido": "#e08a3c", "botao": "#2d8fd5",
+    "painel": "#123a5e", "botao_ativo": "#1b5e8f", "derrota": "#f07a7a",
 }
 FONTE = ("Helvetica", 11)
 FONTE_TITULO = ("Helvetica", 22, "bold")
@@ -114,6 +118,7 @@ class App(tk.Tk):
         self.configure(bg=COR["fundo"])
         self.resizable(False, False)
         self.tela = None
+        self.jogador = ""  # definido na tela de menu antes de cada partida
         self.mostrar(TelaMenu)
 
     def mostrar(self, classe, **kwargs):
@@ -123,21 +128,48 @@ class App(tk.Tk):
         self.tela.pack(padx=24, pady=24)
 
     def ao_terminar_partida(self, resultado):
-        """Chamado ao fim de cada partida com um dict:
-        {"venceu": bool, "tiros": int, "acertos": int, "tiros_inimigo": int}
-        TODO (Participante 3): salvar com a camada de persistência."""
-        print("Partida finalizada:", resultado)
+        registro = {
+            "data_hora": datetime.now().isoformat(timespec="seconds"),
+            "jogador": self.jogador or "Jogador",
+            **resultado,
+        }
+        if not persistencia.salvar_partida(registro):
+            messagebox.showwarning(
+                "Histórico",
+                "Não foi possível salvar esta partida no histórico.\n"
+                "Verifique se a pasta do jogo permite gravação.")
+        return registro
 
 
 class TelaMenu(tk.Frame):
+    MAX_NOME = 16
+
     def __init__(self, app):
         super().__init__(app, bg=COR["fundo"])
         self.app = app
-        rotulo(self, "⚓ BATALHA NAVAL", FONTE_TITULO).pack(pady=(10, 30))
-        botao(self, "Novo jogo", lambda: app.mostrar(TelaPosicionamento)).pack(pady=6)
+        rotulo(self, "⚓ BATALHA NAVAL", FONTE_TITULO).pack(pady=(10, 24))
+        rotulo(self, "Seu nome:").pack()
+        self.nome = tk.StringVar(value=app.jogador)
+        entrada = tk.Entry(self, textvariable=self.nome, font=FONTE, width=20,
+                           justify="center", relief="flat")
+        entrada.pack(pady=(4, 18), ipady=4)
+        entrada.bind("<Return>", lambda _e: self.novo_jogo())
+        botao(self, "Novo jogo", self.novo_jogo).pack(pady=6)
+        botao(self, "Estatísticas", lambda: app.mostrar(TelaEstatisticas)).pack(pady=6)
         botao(self, "Regras", mostrar_regras).pack(pady=6)
-        #botao(self, "Estatísticas", lambda: app.mostrar(TelaEstatisticas)).pack(pady=6)
         botao(self, "Sair", app.destroy).pack(pady=6)
+
+    def novo_jogo(self):
+        nome = " ".join(self.nome.get().split())  # tira espaços extras
+        if not nome:
+            messagebox.showwarning("Nome obrigatório", "Digite seu nome para começar.")
+            return
+        if len(nome) > self.MAX_NOME:
+            messagebox.showwarning(
+                "Nome muito longo", f"Use no máximo {self.MAX_NOME} caracteres.")
+            return
+        self.app.jogador = nome
+        self.app.mostrar(TelaPosicionamento)
 
 
 class TelaPosicionamento(tk.Frame):
@@ -225,6 +257,7 @@ class TelaBatalha(tk.Frame):
         self.ia = m.IA()
         self.vez_jogador = True
         self.tiros = self.acertos = self.tiros_ia = 0
+        self.inicio = time.monotonic()
 
         rotulo(self, "Sua frota", ("Helvetica", 13, "bold")).grid(row=0, column=0)
         rotulo(self, "Frota inimiga (clique para atirar)", ("Helvetica", 13, "bold")).grid(row=0, column=1)
@@ -297,7 +330,144 @@ class TelaBatalha(tk.Frame):
 
     def fim(self, venceu):
         self.vez_jogador = False
-        self.app.ao_terminar_partida({"venceu": venceu, "tiros": self.tiros,
-                                      "acertos": self.acertos, "tiros_inimigo": self.tiros_ia})
+        registro = self.app.ao_terminar_partida({
+            "venceu": venceu, "tiros": self.tiros, "acertos": self.acertos,
+            "tiros_inimigo": self.tiros_ia,
+            "duracao_s": round(time.monotonic() - self.inicio)})
         messagebox.showinfo("Fim de jogo", "Você venceu!" if venceu else "Sua frota foi destruída.")
-        self.app.mostrar(TelaMenu)
+        self.app.mostrar(TelaEstatisticas, ultima=registro)
+
+
+class TelaEstatisticas(tk.Frame):
+
+    COLUNAS = (("data", "Data/hora", 135), ("jogador", "Jogador", 95),
+               ("resultado", "Resultado", 85), ("tiros", "Tiros", 55),
+               ("acertos", "Acertos", 70), ("precisao", "Precisão", 75),
+               ("inimigo", "Tiros inim.", 90), ("duracao", "Duração", 75))
+
+    def __init__(self, app, ultima=None):
+        super().__init__(app, bg=COR["fundo"])
+        self.app = app
+        self.ultima = ultima
+        self.historico = persistencia.carregar_historico()
+        if ultima is not None and (not self.historico or self.historico[-1] != ultima):
+            self.historico.append(ultima)  # salvamento falhou: ainda assim mostra a partida
+        self.canvas_grafico = None
+        self.botoes_grafico = {}
+
+        rotulo(self, "📊 Estatísticas", FONTE_TITULO).grid(row=0, column=0, columnspan=2, pady=(0, 10))
+        if ultima is not None:
+            self._montar_ultima_partida().grid(row=1, column=0, columnspan=2, pady=(0, 10))
+        self._montar_resumo().grid(row=2, column=0, columnspan=2, pady=(0, 14))
+
+        esquerda = tk.Frame(self, bg=COR["fundo"])
+        esquerda.grid(row=3, column=0, padx=(0, 16), sticky="n")
+        if len(est.GRAFICOS) > 1:  # com um gráfico só, não precisa de botões
+            barra = tk.Frame(esquerda, bg=COR["fundo"])
+            barra.pack(pady=(0, 6))
+            for nome in est.GRAFICOS:
+                b = botao(barra, nome, lambda n=nome: self.mostrar_grafico(n), 19)
+                b.pack(side="left", padx=3)
+                self.botoes_grafico[nome] = b
+        self.area_grafico = tk.Frame(esquerda, bg=COR["fundo"])
+        self.area_grafico.pack()
+
+        direita = tk.Frame(self, bg=COR["fundo"])
+        direita.grid(row=3, column=1, sticky="n")
+        rotulo(direita, "Histórico de partidas", ("Helvetica", 13, "bold")).pack(anchor="w", pady=(0, 6))
+        self._montar_tabela(direita)
+
+        botao(self, "Voltar ao menu", lambda: app.mostrar(TelaMenu)).grid(
+            row=4, column=0, columnspan=2, pady=(16, 0))
+        self.mostrar_grafico(next(iter(est.GRAFICOS)))
+
+    # -- resumo -------------------------------------------------------------
+    def _cartao(self, master, valor, legenda):
+        quadro = tk.Frame(master, bg=COR["painel"], padx=18, pady=8)
+        tk.Label(quadro, text=valor, font=("Helvetica", 18, "bold"),
+                 bg=COR["painel"], fg=COR["texto"]).pack()
+        tk.Label(quadro, text=legenda, font=("Helvetica", 9),
+                 bg=COR["painel"], fg=COR["texto"]).pack()
+        return quadro
+
+    def _montar_resumo(self):
+        r = est.resumo(self.historico)
+        melhor = r["melhor_partida"]
+        cartoes = [
+            (str(r["partidas"]), "partidas"),
+            (str(r["vitorias"]), "vitórias"),
+            (str(r["derrotas"]), "derrotas"),
+            (f"{r['taxa_vitoria']:.0f}%", "taxa de vitória"),
+            (f"{r['precisao_media']:.0f}%", "precisão média"),
+            (f"{melhor['tiros']} tiros" if melhor else "—", "melhor vitória"),
+        ]
+        quadro = tk.Frame(self, bg=COR["fundo"])
+        for i, (valor, legenda) in enumerate(cartoes):
+            self._cartao(quadro, valor, legenda).grid(row=0, column=i, padx=5)
+        return quadro
+
+    def _montar_ultima_partida(self):
+        u = self.ultima
+        precisao = est.precisao(est.normalizar_historico([u])[0])
+        texto_precisao = f"{precisao:.0f}%" if precisao is not None else "—"
+        resultado = "VITÓRIA" if u["venceu"] else "DERROTA"
+        return tk.Label(
+            self, bg=COR["fundo"], font=("Helvetica", 12, "bold"),
+            fg=COR["ok"] if u["venceu"] else COR["derrota"],
+            text=(f"Última partida: {resultado} — {u['tiros']} tiros, {u['acertos']} acertos "
+                  f"({texto_precisao}) · inimigo atirou {u['tiros_inimigo']}x · "
+                  f"duração {est.formatar_duracao(u['duracao_s'])}"))
+
+    # -- tabela -------------------------------------------------------------
+    def _montar_tabela(self, master):
+        estilo = ttk.Style(self)
+        estilo.theme_use("clam")
+        estilo.configure("BN.Treeview", background=COR["painel"], fieldbackground=COR["painel"],
+                         foreground=COR["texto"], rowheight=24, borderwidth=0, font=FONTE)
+        estilo.configure("BN.Treeview.Heading", background=COR["botao_ativo"], foreground="white",
+                         relief="flat", font=("Helvetica", 10, "bold"))
+        estilo.map("BN.Treeview", background=[("selected", COR["botao"])],
+                   foreground=[("selected", "white")])
+        estilo.map("BN.Treeview.Heading", background=[("active", COR["botao"])])
+
+        quadro = tk.Frame(master, bg=COR["fundo"])
+        quadro.pack()
+        tabela = ttk.Treeview(quadro, columns=[c[0] for c in self.COLUNAS], show="headings",
+                              height=11, style="BN.Treeview", selectmode="browse")
+        for chave, titulo, largura in self.COLUNAS:
+            tabela.heading(chave, text=titulo)
+            tabela.column(chave, width=largura, anchor="center", stretch=False)
+        tabela.tag_configure("vitoria", foreground=COR["ok"])
+        tabela.tag_configure("derrota", foreground=COR["derrota"])
+        rolagem = ttk.Scrollbar(quadro, orient="vertical", command=tabela.yview)
+        tabela.configure(yscrollcommand=rolagem.set)
+        tabela.pack(side="left")
+        rolagem.pack(side="left", fill="y")
+
+        registros = est.normalizar_historico(self.historico)
+        for reg in reversed(registros):  # mais recente primeiro
+            prec = est.precisao(reg)
+            tabela.insert("", "end", tags=("vitoria" if reg["venceu"] else "derrota",), values=(
+                est.formatar_data(reg["data_hora"]), reg["jogador"],
+                "Vitória" if reg["venceu"] else "Derrota", reg["tiros"], reg["acertos"],
+                f"{prec:.0f}%" if prec is not None else "—", reg["tiros_inimigo"],
+                est.formatar_duracao(reg["duracao_s"])))
+        if not registros:
+            rotulo(master, "Nenhuma partida registrada ainda.").pack(pady=8)
+        elif self.ultima is not None:
+            primeiro = tabela.get_children()[0]
+            tabela.selection_set(primeiro)  # destaca a partida que acabou de terminar
+            tabela.see(primeiro)
+        self.tabela = tabela
+
+    # -- gráficos -----------------------------------------------------------
+    def mostrar_grafico(self, nome):
+        if self.canvas_grafico is not None:
+            self.canvas_grafico.get_tk_widget().destroy()
+        figura = est.GRAFICOS[nome](self.historico)
+        self.canvas_grafico = FigureCanvasTkAgg(figura, master=self.area_grafico)
+        self.canvas_grafico.draw()
+        self.canvas_grafico.get_tk_widget().configure(highlightthickness=0, bg=COR["fundo"])
+        self.canvas_grafico.get_tk_widget().pack()
+        for n, b in self.botoes_grafico.items():
+            b.config(bg=COR["botao_ativo"] if n == nome else COR["botao"])
