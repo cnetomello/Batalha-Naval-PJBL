@@ -1,3 +1,4 @@
+from pathlib import Path
 import time
 import tkinter as tk
 from datetime import datetime
@@ -5,7 +6,7 @@ from tkinter import messagebox, ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from batalha_naval import estatisticas as est
 from batalha_naval import modelo as m
-
+from batalha_naval import persistencia
 TAM_CELULA = 36
 MARGEM = 28
 COR = {
@@ -279,13 +280,31 @@ class TelaBatalha(tk.Frame):
         )
         self.atualizar_navios_restantes()
 
+        self.mensagem_afundamento = rotulo(
+        self,
+    "",
+    ("Helvetica", 12, "bold")
+)
+        self.mensagem_afundamento.grid(
+    row=4, column=0, columnspan=2, pady=5
+)
         self.log = tk.Listbox(self, height=5, width=80, font=FONTE, bg="#123a5e",
                               fg=COR["texto"], highlightthickness=0)
-        self.log.grid(row=4, column=0, columnspan=2)
-        botao(self, "Desistir", lambda: app.mostrar(TelaMenu), 12).grid(row=5, column=0, columnspan=2, pady=10)
+        self.log.grid(row=5, column=0, columnspan=2)
+        botao(self, "Desistir", lambda: app.mostrar(TelaMenu), 12).grid(row=6, column=0, columnspan=2, pady=10)
         
 
     def atualizar_navios_restantes(self):
+        def mostrar_mensagem_afundamento(self, nome):
+            self.mensagem_afundamento.config(
+            text=f"Você afundou o {nome} inimigo!",
+            fg=COR["ok"]
+        )
+
+        self.after(
+        3000,
+        lambda: self.mensagem_afundamento.config(text="")
+    )
         restantes = self.inimigo.navios_restantes()
         total = len(self.inimigo.navios)
 
@@ -308,6 +327,10 @@ class TelaBatalha(tk.Frame):
         self.tiros += 1
         self.acertos += resultado != "agua"
         self._registrar("Você", *cel, resultado, nome)
+
+        if resultado == "afundou":
+            self.mostrar_mensagem_afundamento(nome)
+
         self.canvas_inimigo.desenhar()
         self.atualizar_navios_restantes()
         if self.inimigo.todos_afundados():
