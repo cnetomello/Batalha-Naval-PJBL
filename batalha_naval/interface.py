@@ -292,19 +292,25 @@ class TelaBatalha(tk.Frame):
                               fg=COR["texto"], highlightthickness=0)
         self.log.grid(row=5, column=0, columnspan=2)
         botao(self, "Desistir", lambda: app.mostrar(TelaMenu), 12).grid(row=6, column=0, columnspan=2, pady=10)
-        
+        botao(self, "Salvar e sair", self.salvar_e_sair, 12).grid(row=7, column=0, columnspan=2, pady=10)
+
+    def salvar_e_sair(self):
+        registro = {
+            "jogador": self.app.jogador or "Jogador",
+            "status": "interrompida",
+            "tiros": self.tiros,
+            "acertos": self.acertos,
+            "tiros_inimigo": self.tiros_ia,
+        }
+        if persistencia.salvar_partida(registro):
+            self.app.mostrar(TelaMenu)
+        else:
+            messagebox.showwarning(
+                "Erro ao salvar",
+                "Não foi possível salvar a partida."
+            )
 
     def atualizar_navios_restantes(self):
-        def mostrar_mensagem_afundamento(self, nome):
-            self.mensagem_afundamento.config(
-            text=f"Você afundou o {nome} inimigo!",
-            fg=COR["ok"]
-        )
-
-        self.after(
-        3000,
-        lambda: self.mensagem_afundamento.config(text="")
-    )
         restantes = self.inimigo.navios_restantes()
         total = len(self.inimigo.navios)
 
@@ -312,6 +318,15 @@ class TelaBatalha(tk.Frame):
             text=f"Navios inimigos restantes: {restantes} de {total}"
         )
 
+    def mostrar_mensagem_afundamento(self, nome):
+        self.mensagem_afundamento.config(
+        text=f"Você afundou o {nome} inimigo!",
+        fg=COR["ok"]
+        )
+        self.after(
+        3000,
+        lambda: self.mensagem_afundamento.config(text="")
+    )
 
     def _registrar(self, quem, linha, coluna, resultado, nome):
         coord = f"{chr(65 + coluna)}{linha + 1}"
