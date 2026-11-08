@@ -1,8 +1,6 @@
 from datetime import datetime
 
 from matplotlib.figure import Figure
-from matplotlib.lines import Line2D
-from matplotlib.ticker import MaxNLocator
 
 # Paleta igual à da interface (interface.COR). Duplicada aqui de propósito:
 # importar a interface criaria um import circular quando ela usar este módulo.
@@ -232,15 +230,12 @@ def grafico_precisao_por_partida(historico):
 
     ax.set_ylim(0, 105)
     ax.set_xlim(0.5, len(pontos) + 0.5)
-    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_xlabel("Partida", color=COR["texto"])
     ax.set_ylabel("Acertos / tiros (%)", color=COR["texto"])
     ax.grid(color=COR["grade"], alpha=0.6)
     ax.set_axisbelow(True)
 
     ax.legend(handles=[
-        Line2D([], [], marker="o", linestyle="", color=COR["vitoria"], label="Vitória"),
-        Line2D([], [], marker="o", linestyle="", color=COR["derrota"], label="Derrota"),
     ], loc="lower left", frameon=False, labelcolor=COR["texto"])
 
     fig.tight_layout()
@@ -272,7 +267,6 @@ def grafico_ranking_jogadores(historico):
 
     maximo = max(j["partidas"] for j in ranking)
     ax.set_xlim(0, maximo * 1.2 + 0.5)
-    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_xlabel("Partidas (percentual = taxa de vitória)", color=COR["texto"])
     ax.grid(axis="x", color=COR["grade"], alpha=0.6)
     ax.set_axisbelow(True)
@@ -283,7 +277,5 @@ def grafico_ranking_jogadores(historico):
 
 
 GRAFICOS = {
-    "Vitórias x Derrotas": grafico_vitorias_derrotas,
-    "Precisão por partida": grafico_precisao_por_partida,
-    "Ranking de jogadores": grafico_ranking_jogadores,
+    "Vitórias x Derrotas": grafico_vitorias_derrotas
 }

@@ -391,7 +391,6 @@ class TelaEstatisticas(tk.Frame):
         if ultima is not None and (not self.historico or self.historico[-1] != ultima):
             self.historico.append(ultima)  # salvamento falhou: ainda assim mostra a partida
         self.canvas_grafico = None
-        self.botoes_grafico = {}
 
         rotulo(self, "📊 Estatísticas", FONTE_TITULO).grid(row=0, column=0, columnspan=2, pady=(0, 10))
         if ultima is not None:
@@ -400,13 +399,6 @@ class TelaEstatisticas(tk.Frame):
 
         esquerda = tk.Frame(self, bg=COR["fundo"])
         esquerda.grid(row=3, column=0, padx=(0, 16), sticky="n")
-        if len(est.GRAFICOS) > 1:  # com um gráfico só, não precisa de botões
-            barra = tk.Frame(esquerda, bg=COR["fundo"])
-            barra.pack(pady=(0, 6))
-            for nome in est.GRAFICOS:
-                b = botao(barra, nome, lambda n=nome: self.mostrar_grafico(n), 19)
-                b.pack(side="left", padx=3)
-                self.botoes_grafico[nome] = b
         self.area_grafico = tk.Frame(esquerda, bg=COR["fundo"])
         self.area_grafico.pack()
 
@@ -507,5 +499,3 @@ class TelaEstatisticas(tk.Frame):
         self.canvas_grafico.draw()
         self.canvas_grafico.get_tk_widget().configure(highlightthickness=0, bg=COR["fundo"])
         self.canvas_grafico.get_tk_widget().pack()
-        for n, b in self.botoes_grafico.items():
-            b.config(bg=COR["botao_ativo"] if n == nome else COR["botao"])
