@@ -156,6 +156,7 @@ class TelaMenu(tk.Frame):
         entrada.pack(pady=(4, 18), ipady=4)
         entrada.bind("<Return>", lambda _e: self.novo_jogo())
         botao(self, "Novo jogo", self.novo_jogo).pack(pady=6)
+        botao(self, "Retomar partida", self.retomar_jogo).pack(pady=6)
         botao(self, "Estatísticas", lambda: app.mostrar(TelaEstatisticas)).pack(pady=6)
         botao(self, "Regras", mostrar_regras).pack(pady=6)
         botao(self, "Sair", app.destroy).pack(pady=6)
@@ -169,8 +170,30 @@ class TelaMenu(tk.Frame):
             messagebox.showwarning(
                 "Nome muito longo", f"Use no máximo {self.MAX_NOME} caracteres.")
             return
+        if persistencia.carregar_estado_jogo() is not None:
+            confirmar = messagebox.askyesno(
+                "Partida salva",
+                "Existe uma partida salva. Iniciar um novo jogo irá descartá-la. Deseja continuar?"
+            )
+            if not confirmar:
+                return
+            persistencia.excluir_estado_jogo()
         self.app.jogador = nome
         self.app.mostrar(TelaPosicionamento)
+
+    def retomar_jogo(self):
+        estado = persistencia.carregar_estado_jogo()
+        if estado is None:
+            messagebox.showwarning(
+                "Erro ao carregar partida",
+                "Nenhuma partida salva encontrada."
+            )
+            return
+        self.app.jogador = estado["jogador"]
+        self.app.mostrar(
+            TelaBatalha,
+            estado=estado
+        )
 
 
 class TelaPosicionamento(tk.Frame):
@@ -249,17 +272,35 @@ class TelaPosicionamento(tk.Frame):
 
 
 class TelaBatalha(tk.Frame):
-    def __init__(self, app, tab_jogador):
+    def __init__(self, app, tab_jogador=None, estado=None):
         super().__init__(app, bg=COR["fundo"])
         self.app = app
-        self.jogador = tab_jogador
-        self.inimigo = m.Tabuleiro()
-        self.inimigo.posicionar_aleatorio()
-        self.ia = m.IA()
-        self.vez_jogador = True
-        self.tiros = self.acertos = self.tiros_ia = 0
-        self.inicio = time.monotonic()
-
+        self.after_ia_id = None
+        if estado is not None:
+            self.jogador = m.Tabuleiro()
+            self.jogador.carregar_dict(estado["tabuleiro_jogador"])
+            self.inimigo = m.Tabuleiro()
+            self.inimigo.carregar_dict(estado["tabuleiro_inimigo"])
+            self.ia = m.IA()
+            self.ia.carregar_dict(estado["estado_ia"])
+            self.tiros = estado["estatisticas"]["tiros"]
+            self.acertos = estado["estatisticas"]["acertos"]
+            self.tiros_ia = estado["estatisticas"]["tiros_ia"]
+            self.vez_jogador = estado["vez_jogador"]
+            duracao = estado["duracao_s"]
+            self.inicio = time.monotonic() - duracao
+            self.historico_log = estado.get("log", [])
+        else:
+            self.jogador = tab_jogador
+            self.inimigo = m.Tabuleiro()
+            self.inimigo.posicionar_aleatorio()
+            self.ia = m.IA()
+            self.vez_jogador = True
+            self.tiros = 0
+            self.acertos = 0
+            self.tiros_ia = 0
+            self.inicio = time.monotonic()
+            self.historico_log = []
         rotulo(self, "Sua frota", ("Helvetica", 13, "bold")).grid(row=0, column=0)
         rotulo(self, "Frota inimiga (clique para atirar)", ("Helvetica", 13, "bold")).grid(row=0, column=1)
         self.canvas_jogador = TabuleiroCanvas(self, self.jogador, True)
@@ -273,42 +314,63 @@ class TelaBatalha(tk.Frame):
         self.info_navios = rotulo(
             self,
             "",
-        ("Helvetica", 12, "bold")
+            ("Helvetica", 12, "bold")
         )
         self.info_navios.grid(
-        row=3, column=0, columnspan=2, pady=5
+            row=3, column=0, columnspan=2, pady=5
         )
         self.atualizar_navios_restantes()
 
         self.mensagem_afundamento = rotulo(
-        self,
-    "",
-    ("Helvetica", 12, "bold")
-)
+            self,
+            "",
+            ("Helvetica", 12, "bold")
+        )
         self.mensagem_afundamento.grid(
-    row=4, column=0, columnspan=2, pady=5
-)
+            row=4, column=0, columnspan=2, pady=5
+        )
         self.log = tk.Listbox(self, height=5, width=80, font=FONTE, bg="#123a5e",
                               fg=COR["texto"], highlightthickness=0)
         self.log.grid(row=5, column=0, columnspan=2)
         botao(self, "Desistir", lambda: app.mostrar(TelaMenu), 12).grid(row=6, column=0, columnspan=2, pady=10)
         botao(self, "Salvar e sair", self.salvar_e_sair, 12).grid(row=7, column=0, columnspan=2, pady=10)
+        for jogada in self.historico_log:
+            self.log.insert("end", jogada)
+        self.atualizar_navios_restantes()
+        if not self.vez_jogador:
+            self.status.config(text="Vez do adversário...")
+            self.after_ia_id = self.after(700, self.turno_ia)
 
     def salvar_e_sair(self):
-        registro = {
-            "jogador": self.app.jogador or "Jogador",
-            "status": "interrompida",
-            "tiros": self.tiros,
-            "acertos": self.acertos,
-            "tiros_inimigo": self.tiros_ia,
+        duracao = round(time.monotonic() - self.inicio)
+        estado = {
+            "jogador": self.app.jogador,
+            "tabuleiro_jogador": self.jogador.para_dict(),
+            "tabuleiro_inimigo": self.inimigo.para_dict(),
+            "estado_ia": self.ia.para_dict(),
+            "estatisticas": {
+                "tiros": self.tiros,
+                "acertos": self.acertos,
+                "tiros_ia": self.tiros_ia
+            },
+            "vez_jogador": self.vez_jogador,
+            "duracao_s": duracao,
+            "log": list(self.log.get(0, "end"))
         }
-        if persistencia.salvar_partida(registro):
-            self.app.mostrar(TelaMenu)
-        else:
-            messagebox.showwarning(
+        if not persistencia.salvar_estado_jogo(estado):
+            messagebox.showerror(
                 "Erro ao salvar",
                 "Não foi possível salvar a partida."
             )
+            return
+        if self.after_ia_id is not None:
+            self.after_cancel(self.after_ia_id)
+            self.after_ia_id = None
+        messagebox.showinfo(
+            "Partida salva",
+            "Sua partida foi salva com sucesso!"
+        )
+        self.app.mostrar(TelaMenu)
 
     def atualizar_navios_restantes(self):
         restantes = self.inimigo.navios_restantes()
@@ -352,9 +414,10 @@ class TelaBatalha(tk.Frame):
             return self.fim(True)
         self.vez_jogador = False
         self.status.config(text="Vez do adversário...")
-        self.after(700, self.turno_ia)
+        self.after_ia_id = self.after(700, self.turno_ia)
 
     def turno_ia(self):
+        self.after_ia_id = None
         l, c = self.ia.escolher()
         resultado, nome = self.jogador.atirar(l, c)
         self.ia.registrar(l, c, resultado)
@@ -368,11 +431,21 @@ class TelaBatalha(tk.Frame):
 
     def fim(self, venceu):
         self.vez_jogador = False
+        if self.after_ia_id is not None:
+            self.after_cancel(self.after_ia_id)
+            self.after_ia_id = None
         registro = self.app.ao_terminar_partida({
-            "venceu": venceu, "tiros": self.tiros, "acertos": self.acertos,
+            "venceu": venceu,
+            "tiros": self.tiros,
+            "acertos": self.acertos,
             "tiros_inimigo": self.tiros_ia,
-            "duracao_s": round(time.monotonic() - self.inicio)})
-        messagebox.showinfo("Fim de jogo", "Você venceu!" if venceu else "Sua frota foi destruída.")
+            "duracao_s": round(time.monotonic() - self.inicio)
+        })
+        persistencia.excluir_estado_jogo()
+        messagebox.showinfo(
+            "Fim de jogo",
+            "Você venceu!" if venceu else "Sua frota foi destruída."
+        )
         self.app.mostrar(TelaEstatisticas, ultima=registro)
 
 

@@ -80,6 +80,29 @@ class Tabuleiro:
             if n["atingidas"] != n["celulas"]
         )
 
+    def para_dict(self):
+        return {
+            "grade": self.grade,
+            "navios": [
+                {
+                    "nome": n["nome"],
+                    "celulas": [list(c) for c in n["celulas"]],
+                    "atingidas": [list(c) for c in n["atingidas"]]
+                }
+                for n in self.navios
+            ]
+        }
+
+    def carregar_dict(self, dados):
+        self.grade = dados["grade"]
+        self.navios = [
+            {
+                "nome": n["nome"],
+                "celulas": {tuple(c) for c in n["celulas"]},
+                "atingidas": {tuple(c) for c in n["atingidas"]}
+            }
+            for n in dados["navios"]
+        ]
 
 
 class IA:
@@ -108,3 +131,18 @@ class IA:
         elif resultado == "acerto":
             for dl, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 self.alvos.append((linha + dl, coluna + dc))
+
+    def para_dict(self):
+        return {
+            "disponiveis": [list(c) for c in self.disponiveis],
+            "alvos": [list(c) for c in self.alvos]
+        }
+
+    def carregar_dict(self, dados):
+        self.disponiveis = {
+            tuple(c) for c in dados["disponiveis"]
+        }
+
+        self.alvos = [
+            tuple(c) for c in dados["alvos"]
+        ]

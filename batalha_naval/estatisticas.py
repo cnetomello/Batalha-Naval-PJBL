@@ -2,8 +2,6 @@ from datetime import datetime
 
 from matplotlib.figure import Figure
 
-# Paleta igual à da interface (interface.COR). Duplicada aqui de propósito:
-# importar a interface criaria um import circular quando ela usar este módulo.
 COR = {
     "fundo": "#0b2540", "painel": "#123a5e", "texto": "#e8f1f8",
     "vitoria": "#4caf7a", "derrota": "#d64545", "destaque": "#2d8fd5",
@@ -11,11 +9,6 @@ COR = {
 }
 TAMANHO_FIGURA = (5.0, 3.5)
 MAX_JOGADORES_RANKING = 8
-
-
-# ---------------------------------------------------------------------------
-# Limpeza dos dados
-# ---------------------------------------------------------------------------
 
 def _inteiro_nao_negativo(valor):
     try:
