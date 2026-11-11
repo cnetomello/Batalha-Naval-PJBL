@@ -112,6 +112,7 @@ def mostrar_regras():
         "7. Vence quem afundar todos os barcos inimigos."
     )
 
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -189,7 +190,7 @@ class TelaMenu(tk.Frame):
                 "Nenhuma partida salva encontrada."
             )
             return
-        self.app.jogador = estado["jogador"]
+        self.app.jogador = estado.get("jogador") or self.app.jogador
         self.app.mostrar(
             TelaBatalha,
             estado=estado
@@ -276,7 +277,10 @@ class TelaBatalha(tk.Frame):
         super().__init__(app, bg=COR["fundo"])
         self.app = app
         self.after_ia_id = None
+        self.after_msg_id = None
+
         if estado is not None:
+            # Restaurar partida salva
             self.jogador = m.Tabuleiro()
             self.jogador.carregar_dict(estado["tabuleiro_jogador"])
             self.inimigo = m.Tabuleiro()
@@ -291,6 +295,7 @@ class TelaBatalha(tk.Frame):
             self.inicio = time.monotonic() - duracao
             self.historico_log = estado.get("log", [])
         else:
+            # Iniciar nova partida
             self.jogador = tab_jogador
             self.inimigo = m.Tabuleiro()
             self.inimigo.posicionar_aleatorio()
@@ -301,45 +306,62 @@ class TelaBatalha(tk.Frame):
             self.tiros_ia = 0
             self.inicio = time.monotonic()
             self.historico_log = []
-        rotulo(self, "Sua frota", ("Helvetica", 13, "bold")).grid(row=0, column=0)
-        rotulo(self, "Frota inimiga (clique para atirar)", ("Helvetica", 13, "bold")).grid(row=0, column=1)
+
+        # Se a partida restaurada já está no último navio, não repete o aviso
+        self.aviso_ultimo_navio = self.inimigo.navios_restantes() <= 1
+        self.aviso_ultimo_navio_jogador = self.jogador.navios_restantes() <= 1
+
+        # --- Placar no topo: VOCÊ  4 × 5  INIMIGO ---
+        self.placar = tk.Frame(self, bg=COR["fundo"])
+        self.placar.grid(row=0, column=0, columnspan=2, pady=(0, 14))
+        rotulo(self.placar, "VOCÊ", ("Helvetica", 14, "bold")).grid(row=0, column=0, padx=18)
+        self.num_voce = rotulo(self.placar, "", ("Helvetica", 34, "bold"))
+        self.num_voce.grid(row=0, column=1)
+        rotulo(self.placar, "×", ("Helvetica", 26, "bold")).grid(row=0, column=2, padx=14)
+        self.num_inimigo = rotulo(self.placar, "", ("Helvetica", 34, "bold"))
+        self.num_inimigo.grid(row=0, column=3)
+        rotulo(self.placar, "INIMIGO", ("Helvetica", 14, "bold")).grid(row=0, column=4, padx=18)
+
+        rotulo(self, "Sua frota", ("Helvetica", 13, "bold")).grid(row=1, column=0)
+        rotulo(self, "Frota inimiga (clique para atirar)", ("Helvetica", 13, "bold")).grid(row=1, column=1)
         self.canvas_jogador = TabuleiroCanvas(self, self.jogador, True)
-        self.canvas_jogador.grid(row=1, column=0, padx=10)
+        self.canvas_jogador.grid(row=2, column=0, padx=10)
         self.canvas_inimigo = TabuleiroCanvas(self, self.inimigo, False, self.atirar)
-        self.canvas_inimigo.grid(row=1, column=1, padx=10)
+        self.canvas_inimigo.grid(row=2, column=1, padx=10)
 
         self.status = rotulo(self, "Sua vez!", ("Helvetica", 13, "bold"))
-        self.status.grid(row=2, column=0, columnspan=2, pady=(12, 4))
-        
-        self.info_navios = rotulo(
-            self,
-            "",
-            ("Helvetica", 12, "bold")
-        )
-        self.info_navios.grid(
-            row=3, column=0, columnspan=2, pady=5
-        )
-        self.atualizar_navios_restantes()
+        self.status.grid(row=3, column=0, columnspan=2, pady=(12, 4))
 
-        self.mensagem_afundamento = rotulo(
-            self,
-            "",
-            ("Helvetica", 12, "bold")
-        )
-        self.mensagem_afundamento.grid(
-            row=4, column=0, columnspan=2, pady=5
-        )
+        self.mensagem_afundamento = rotulo(self, "", ("Helvetica", 12, "bold"))
+        self.mensagem_afundamento.grid(row=4, column=0, columnspan=2, pady=5)
+
         self.log = tk.Listbox(self, height=5, width=80, font=FONTE, bg="#123a5e",
                               fg=COR["texto"], highlightthickness=0)
         self.log.grid(row=5, column=0, columnspan=2)
-        botao(self, "Desistir", lambda: app.mostrar(TelaMenu), 12).grid(row=6, column=0, columnspan=2, pady=10)
-        botao(self, "Salvar e sair", self.salvar_e_sair, 12).grid(row=7, column=0, columnspan=2, pady=10)
+        botao(self, "Desistir", lambda: app.mostrar(TelaMenu), 12).grid(row=6, column=0, columnspan=2, pady=8)
+        botao(self, "Salvar e sair", self.salvar_e_sair, 12).grid(row=7, column=0, columnspan=2, pady=8)
+
+        # Recuperar histórico da partida salva
         for jogada in self.historico_log:
             self.log.insert("end", jogada)
-        self.atualizar_navios_restantes()
+
+        self.atualizar_placar()
+
         if not self.vez_jogador:
             self.status.config(text="Vez do adversário...")
             self.after_ia_id = self.after(700, self.turno_ia)
+
+    def destroy(self):
+        # Cancela tudo que estiver agendado para não dar TclError ao trocar de tela
+        for attr in ("after_ia_id", "after_msg_id"):
+            id_ = getattr(self, attr, None)
+            if id_ is not None:
+                try:
+                    self.after_cancel(id_)
+                except tk.TclError:
+                    pass
+                setattr(self, attr, None)
+        super().destroy()
 
     def salvar_e_sair(self):
         duracao = round(time.monotonic() - self.inicio)
@@ -363,32 +385,36 @@ class TelaBatalha(tk.Frame):
                 "Não foi possível salvar a partida."
             )
             return
-        if self.after_ia_id is not None:
-            self.after_cancel(self.after_ia_id)
-            self.after_ia_id = None
         messagebox.showinfo(
             "Partida salva",
             "Sua partida foi salva com sucesso!"
         )
         self.app.mostrar(TelaMenu)
 
-    def atualizar_navios_restantes(self):
-        restantes = self.inimigo.navios_restantes()
-        total = len(self.inimigo.navios)
-
-        self.info_navios.config(
-            text=f"Navios inimigos restantes: {restantes} de {total}"
-        )
+    def atualizar_placar(self):
+        voce = self.jogador.navios_restantes()
+        inimigo = self.inimigo.navios_restantes()
+        for rot, qtd in ((self.num_voce, voce), (self.num_inimigo, inimigo)):
+            if qtd == 0:
+                cor = "#7a8a99"
+            elif qtd == 1:
+                cor = COR["acerto"]
+            else:
+                cor = COR["texto"]
+            rot.config(text=str(qtd), fg=cor)
 
     def mostrar_mensagem_afundamento(self, nome):
         self.mensagem_afundamento.config(
-        text=f"Você afundou o {nome} inimigo!",
-        fg=COR["ok"]
+            text=f"Você afundou o {nome} inimigo!",
+            fg=COR["ok"]
         )
-        self.after(
-        3000,
-        lambda: self.mensagem_afundamento.config(text="")
-    )
+        if self.after_msg_id is not None:
+            self.after_cancel(self.after_msg_id)
+        self.after_msg_id = self.after(3000, self._limpar_mensagem_afundamento)
+
+    def _limpar_mensagem_afundamento(self):
+        self.after_msg_id = None
+        self.mensagem_afundamento.config(text="")
 
     def _registrar(self, quem, linha, coluna, resultado, nome):
         coord = f"{chr(65 + coluna)}{linha + 1}"
@@ -409,23 +435,38 @@ class TelaBatalha(tk.Frame):
             self.mostrar_mensagem_afundamento(nome)
 
         self.canvas_inimigo.desenhar()
-        self.atualizar_navios_restantes()
+        self.atualizar_placar()
         if self.inimigo.todos_afundados():
             return self.fim(True)
+
+        if self.inimigo.navios_restantes() == 1 and not self.aviso_ultimo_navio:
+            self.aviso_ultimo_navio = True
+            messagebox.showinfo("Último navio!", "Apenas 1 navio inimigo sobrando!")
+
         self.vez_jogador = False
         self.status.config(text="Vez do adversário...")
         self.after_ia_id = self.after(700, self.turno_ia)
 
     def turno_ia(self):
         self.after_ia_id = None
-        l, c = self.ia.escolher()
+        jogada = self.ia.escolher()
+        if jogada is None:
+            return
+        l, c = jogada
         resultado, nome = self.jogador.atirar(l, c)
         self.ia.registrar(l, c, resultado)
         self.tiros_ia += 1
         self._registrar("Inimigo", l, c, resultado, nome)
         self.canvas_jogador.desenhar()
+        self.atualizar_placar()
         if self.jogador.todos_afundados():
             return self.fim(False)
+
+        if (self.jogador.navios_restantes() == 1
+                and not self.aviso_ultimo_navio_jogador):
+            self.aviso_ultimo_navio_jogador = True
+            messagebox.showwarning("Cuidado!", "Você só tem 1 navio restante!")
+
         self.vez_jogador = True
         self.status.config(text="Sua vez!")
 
